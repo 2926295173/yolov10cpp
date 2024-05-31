@@ -18,13 +18,17 @@ const std::vector<std::string> CLASS_NAMES = {
     "scissors", "teddy bear", "hair drier", "toothbrush"};
 
 // Function to load and preprocess the image
-std::vector<float> preprocessImage(const std::string &image_path, const std::vector<int64_t> &input_shape)
+std::vector<float> preprocessImage(const std::string &image_path, const std::vector<int64_t> &input_shape, int &orig_width, int &orig_height)
 {
     cv::Mat image = cv::imread(image_path);
     if (image.empty())
     {
         throw std::runtime_error("Could not read the image: " + image_path);
     }
+
+    // Save the original dimensions
+    orig_width = image.cols;
+    orig_height = image.rows;
 
     cv::Mat resized_image;
     cv::resize(image, resized_image, cv::Size(input_shape[2], input_shape[3]));
@@ -69,44 +73,39 @@ struct Detection
     float confidence;
     cv::Rect bbox;
     int class_id;
+    std::string class_name;
 };
 
 // Function to filter and post-process the results based on a confidence threshold
-std::vector<Detection> filterDetections(const std::vector<float> &results, float confidence_threshold, int img_width, int img_height)
+std::vector<Detection> filterDetections(const std::vector<float> &results, float confidence_threshold, int img_width, int img_height, int orig_width, int orig_height)
 {
     std::vector<Detection> detections;
-    const int num_classes = 80; // Adjust this based on your YOLO model
-    const int num_detections = results.size() / (num_classes + 5);
+    const int num_detections = results.size() / 6;
 
     for (int i = 0; i < num_detections; ++i)
     {
-        float x_center = results[i * (num_classes + 5) + 0];
-        float y_center = results[i * (num_classes + 5) + 1];
-        float width = results[i * (num_classes + 5) + 2];
-        float height = results[i * (num_classes + 5) + 3];
-        float confidence = results[i * (num_classes + 5) + 4];
+        float left = results[i * 6 + 0];
+        float top = results[i * 6 + 1];
+        float right = results[i * 6 + 2];
+        float bottom = results[i * 6 + 3];
+        float confidence = results[i * 6 + 4];
+        int class_id = results[i * 6 + 5];
 
-        int class_id = -1;
-        float max_class_score = 0.0;
-
-        for (int j = 0; j < num_classes; ++j)
+        if (confidence >= confidence_threshold)
         {
-            float class_score = results[i * (num_classes + 5) + 5 + j];
-            if (class_score > max_class_score)
-            {
-                max_class_score = class_score;
-                class_id = j;
-            }
-        }
+            int x = static_cast<int>(left * orig_width / img_width);
+            int y = static_cast<int>(top * orig_height / img_height);
+            int width = static_cast<int>((right - left) * orig_width / img_width);
+            int height = static_cast<int>((bottom - top) * orig_height / img_height);
 
-        if (confidence >= confidence_threshold && class_id != -1)
-        {
-            float left = (x_center - width / 2.0) * img_width;
-            float top = (y_center - height / 2.0) * img_height;
-            float bbox_width = width * img_width;
-            float bbox_height = height * img_height;
-
-            detections.push_back({confidence, cv::Rect(static_cast<int>(left), static_cast<int>(top), static_cast<int>(bbox_width), static_cast<int>(bbox_height)), class_id});
+            detections.push_back(
+                {
+                    confidence,
+                    cv::Rect(x, y, width, height),
+                    class_id,
+                    CLASS_NAMES[class_id]
+                }
+            );
         }
     }
 
@@ -163,8 +162,11 @@ int main(int argc, char *argv[])
         // Define input shape (e.g., {1, 3, 640, 640})
         std::vector<int64_t> input_shape = {1, 3, 640, 640};
 
+        // Save original image dimensions
+        int orig_width, orig_height;
+
         // Preprocess image
-        std::vector<float> input_tensor_values = preprocessImage(image_path, input_shape);
+        std::vector<float> input_tensor_values = preprocessImage(image_path, input_shape, orig_width, orig_height);
 
         // Run inference
         std::vector<float> results = runInference(session, input_tensor_values, input_shape);
@@ -178,15 +180,32 @@ int main(int argc, char *argv[])
         int img_height = image.rows;
 
         // Filter results
-        std::vector<Detection> detections = filterDetections(results, confidence_threshold, img_width, img_height);
+        std::vector<Detection> detections = filterDetections(results, confidence_threshold, input_shape[2], input_shape[3], orig_width, orig_height);
 
-        // Print detections
+        // Print detections and draw bounding boxes
         for (const auto &detection : detections)
         {
             std::cout << "Class ID: " << detection.class_id << " Confidence: " << detection.confidence
                       << " BBox: [" << detection.bbox.x << ", " << detection.bbox.y << ", "
-                      << detection.bbox.width << ", " << detection.bbox.height << "]" << std::endl;
+                      << detection.bbox.width << ", " << detection.bbox.height << "]"
+                      << " Class Name: " << detection.class_name << std::endl;
+
+            // Draw the bounding box on the image
+            cv::rectangle(image, detection.bbox, cv::Scalar(0, 255, 0), 2);
+
+            // Put the class name and confidence on the image
+            std::string label = detection.class_name + ": " + std::to_string(detection.confidence);
+            int baseLine;
+            cv::Size labelSize = cv::getTextSize(label, cv::FONT_HERSHEY_SIMPLEX, 0.5, 1, &baseLine);
+            cv::rectangle(image, cv::Point(detection.bbox.x, detection.bbox.y - labelSize.height),
+                          cv::Point(detection.bbox.x + labelSize.width, detection.bbox.y + baseLine),
+                          cv::Scalar(255, 255, 255), cv::FILLED);
+            cv::putText(image, label, cv::Point(detection.bbox.x, detection.bbox.y),
+                        cv::FONT_HERSHEY_SIMPLEX, 0.5, cv::Scalar(0, 0, 0), 1);
         }
+
+        // Save the resulting image
+        cv::imwrite("result.jpg", image);
     }
     catch (const std::exception &e)
     {

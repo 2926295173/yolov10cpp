@@ -5,7 +5,7 @@
 
 ## Resumen
 
-The next repository aims to provide a basic c++ script using std 17 over, to do it and consider the speed The code use OpenCv 1.9.0_8 and Onnx 1.17.1 to manipulate the image and inference the model. Note that Opncv don't support a native integration because yolov10 integra A top K layer in their architecture.
+The next repository aims to provide a basic c++ script using std 17 over, to do it and consider the speed The code use OpenCv 4.9.0_8 and Onnx 1.17.1 to manipulate the image and inference the model. Note that Opncv don't support a native integration because yolov10 integra A top K layer in their architecture.
 
 
 
@@ -39,6 +39,29 @@ The next repository aims to provide a basic c++ script using std 17 over, to do 
 3. onnxruntime
 
 
+- MacOs
+```
+    brew install ffmpeg 
+    brew install opencv
+    brew install onnxruntime
+```
+
+- Ubuntu: Unfortunately, onnx runtime is no available using native apt-get
+
+You can use python
+```
+sudo apt-get update
+sudo apt-get install python3-pip
+pip3 install onnxruntime
+```
+
+dotnet 
+```
+dotnet add package Microsoft.ML.OnnxRuntime
+
+```
+
+
 ## How to run this code 
 
 
@@ -50,6 +73,20 @@ The next repository aims to provide a basic c++ script using std 17 over, to do 
     cmake ..
     make
 ```
+
+
+2. Run the following command
+
+```
+    ./yolov10_cpp [MODEL_PATH] [IMAGE_PATH]
+```
+
+
+## Future plans
+
+1. Modularize the components.
+2. Make a example to video real time.
+3. Support Cuda. ?
 
 
 ## Reference 
